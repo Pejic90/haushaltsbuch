@@ -205,7 +205,10 @@
 <div id="app">
   <header class="top">
     <h1>Haushaltsbuch</h1>
-    <button class="icon-btn" id="logoutBtn" title="Abmelden">⏻</button>
+    <div style="display:flex; gap:8px;">
+      <button class="icon-btn" id="faceIdBtn" title="Face ID einrichten">🔐</button>
+      <button class="icon-btn" id="logoutBtn" title="Abmelden">⏻</button>
+    </div>
   </header>
 
   <nav class="tabs">
@@ -523,15 +526,98 @@ auth.onAuthStateChanged(async (user)=>{
   if(user){
     state.uid=user.uid;
     document.getElementById('authScreen').style.display='none';
-    document.getElementById('app').style.display='block';
     authFormWrap.style.display='none'; authLoading.style.display='block';
+    if(faceIdEnabled(user.uid)){
+      document.getElementById('app').style.display='none';
+      document.getElementById('lockScreen').style.display='flex';
+    } else {
+      document.getElementById('lockScreen').style.display='none';
+      document.getElementById('app').style.display='block';
+    }
     await bootstrapUser();
+    updateFaceIdBtn();
   } else {
     state.uid=null;
     document.getElementById('app').style.display='none';
+    document.getElementById('lockScreen').style.display='none';
     document.getElementById('authScreen').style.display='flex';
     authFormWrap.style.display='block'; authLoading.style.display='none';
   }
+});
+
+/* ============== FACE ID (WebAuthn platform authenticator) ============== */
+function faceIdSupported(){ return !!(window.PublicKeyCredential && navigator.credentials); }
+function faceIdKey(uid){ return 'hb_faceid_'+uid; }
+function faceIdEnabled(uid){ return uid ? !!localStorage.getItem(faceIdKey(uid)) : false; }
+function bufToBase64(buf){ return btoa(String.fromCharCode(...new Uint8Array(buf))); }
+function base64ToBuf(b64){ return Uint8Array.from(atob(b64), c=>c.charCodeAt(0)).buffer; }
+function randomChallenge(){ const arr=new Uint8Array(32); crypto.getRandomValues(arr); return arr; }
+
+function updateFaceIdBtn(){
+  const btn = document.getElementById('faceIdBtn');
+  if(!btn) return;
+  const on = faceIdEnabled(state.uid);
+  btn.textContent = on ? '🔓' : '🔐';
+  btn.title = on ? 'Face ID deaktivieren' : 'Face ID einrichten';
+}
+
+async function setupFaceId(){
+  if(!faceIdSupported()){ toast('Face ID / Touch ID wird auf diesem Gerät nicht unterstützt'); return; }
+  try{
+    const available = await PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable();
+    if(!available){ toast('Kein Face ID / Touch ID auf diesem Gerät gefunden'); return; }
+    const cred = await navigator.credentials.create({
+      publicKey: {
+        challenge: randomChallenge(),
+        rp: { name: 'Haushaltsbuch' },
+        user: { id: new TextEncoder().encode(state.uid), name: auth.currentUser.email||'Nutzer', displayName: auth.currentUser.email||'Nutzer' },
+        pubKeyCredParams: [{type:'public-key', alg:-7}, {type:'public-key', alg:-257}],
+        authenticatorSelection: { authenticatorAttachment:'platform', userVerification:'required' },
+        timeout: 60000
+      }
+    });
+    localStorage.setItem(faceIdKey(state.uid), bufToBase64(cred.rawId));
+    toast('Face ID eingerichtet 🎉');
+    updateFaceIdBtn();
+  }catch(err){
+    toast('Face ID konnte nicht eingerichtet werden');
+  }
+}
+function disableFaceId(){
+  localStorage.removeItem(faceIdKey(state.uid));
+  toast('Face ID deaktiviert');
+  updateFaceIdBtn();
+}
+document.getElementById('faceIdBtn').addEventListener('click', ()=>{
+  if(!state.uid) return;
+  if(faceIdEnabled(state.uid)){
+    if(confirm('Face ID für dieses Gerät deaktivieren?')) disableFaceId();
+  } else {
+    setupFaceId();
+  }
+});
+async function attemptUnlock(){
+  const credId = localStorage.getItem(faceIdKey(state.uid));
+  if(!credId) return false;
+  try{
+    await navigator.credentials.get({
+      publicKey: { challenge: randomChallenge(), allowCredentials:[{id:base64ToBuf(credId), type:'public-key'}], userVerification:'required', timeout:60000 }
+    });
+    return true;
+  }catch(err){ return false; }
+}
+document.getElementById('unlockBtn').addEventListener('click', async ()=>{
+  const ok = await attemptUnlock();
+  if(ok){
+    document.getElementById('lockScreen').style.display='none';
+    document.getElementById('app').style.display='block';
+  } else {
+    toast('Entsperren fehlgeschlagen – nochmal versuchen');
+  }
+});
+document.getElementById('lockFallbackBtn').addEventListener('click', ()=>{
+  document.getElementById('lockScreen').style.display='none';
+  auth.signOut();
 });
 
 function userCol(name){ return db.collection('users').doc(state.uid).collection(name); }
