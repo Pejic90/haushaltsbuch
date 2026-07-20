@@ -791,7 +791,16 @@ async function seedDefaults(){
 function listenCategories(){ state.unsub.push(userCol('categories').onSnapshot(snap=>{ state.categories=snap.docs.map(d=>({id:d.id,...d.data()})); populateCategorySelect(); renderAll(); })); }
 function listenRecurring(){ state.unsub.push(userCol('recurring').onSnapshot(snap=>{ state.recurring=snap.docs.map(d=>({id:d.id,...d.data()})); renderAll(); })); }
 function listenGoals(){ state.unsub.push(userCol('goals').onSnapshot(snap=>{ state.goals=snap.docs.map(d=>({id:d.id,...d.data()})); renderAll(); })); }
-function listenDebts(){ state.unsub.push(userCol('debts').onSnapshot(snap=>{ state.debts=snap.docs.map(d=>({id:d.id,...d.data()})); renderAll(); })); }
+function listenDebts(){ state.unsub.push(userCol('debts').onSnapshot(snap=>{
+  state.debts=snap.docs.map(d=>({id:d.id,...d.data()}));
+  state.debts.forEach(d=>{
+    if(d.originalAmount===undefined || d.originalAmount===null){
+      d.originalAmount = d.amount;
+      userCol('debts').doc(d.id).set({originalAmount:d.amount}, {merge:true});
+    }
+  });
+  renderAll();
+})); }
 function listenSettings(){ state.unsub.push(db.collection('users').doc(state.uid).collection('meta').doc('settings').onSnapshot(snap=>{ if(snap.exists) state.settings=snap.data(); renderAll(); })); }
 function listenLoans(){ state.unsub.push(userCol('loans').onSnapshot(snap=>{ state.loans=snap.docs.map(d=>({id:d.id,...d.data()})); renderAll(); })); }
 function listenBills(){ state.unsub.push(userCol('bills').onSnapshot(snap=>{ state.bills=snap.docs.map(d=>({id:d.id,...d.data()})); renderAll(); })); }
@@ -1085,11 +1094,18 @@ function debtTileHtml(d){
   const remaining = Number(d.amount)||0;
   const paid = Math.max(0, original-remaining);
   const pct = original>0 ? Math.min(100, Math.round((paid/original)*100)) : 0;
+  const hist = [...(d.history||[])].sort((a,b)=> a.date<b.date?1:-1);
+  const histHtml = hist.length ? `
+    <div style="margin-top:8px; padding-top:8px; border-top:1px solid var(--line);">
+      ${hist.slice(0,3).map(h=>`<div style="display:flex; justify-content:space-between; font-size:11.5px; color:var(--ink-faint); margin-bottom:3px;"><span>${h.date}${h.account?' · '+h.account:''}</span><span class="num">${eur(h.amount)}</span></div>`).join('')}
+      ${hist.length>3 ? `<div style="font-size:11px; color:var(--ink-faint);">+${hist.length-3} weitere Zahlung${hist.length-3===1?'':'en'}</div>` : ''}
+    </div>` : '';
   return `<div class="goal-tile" data-debt="${d.id}">
     <div class="goal-tile-top"><span class="goal-tile-name">${escapeHtml(d.name)}</span><span class="goal-tile-pct num">${pct}%</span></div>
     <div class="goal-track"><div class="grad"></div><div class="cover" style="width:${100-pct}%"></div></div>
     <div class="goal-tile-amounts"><span>${eur(paid)} erledigt</span><span>${eur(original)} gesamt</span></div>
     <div class="goal-tile-need ${pct>=100?'done':''}">noch ${eur(remaining)} offen</div>
+    ${histHtml}
   </div>`;
 }
 function openDebtAction(id){
