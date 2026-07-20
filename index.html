@@ -4,6 +4,9 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
 <title>Haushaltsbuch</title>
+<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+<meta http-equiv="Pragma" content="no-cache">
+<meta http-equiv="Expires" content="0">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='20' fill='%2310161A'/%3E%3Ctext x='50' y='68' font-size='55' text-anchor='middle'%3E%F0%9F%93%92%3C/text%3E%3C/svg%3E">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -217,6 +220,8 @@
     <button data-tab="analyse">Analyse</button>
     <button data-tab="recurring">Fixkosten</button>
     <button data-tab="schulden">Schulden</button>
+    <button data-tab="rechnungen">Rechnungen</button>
+    <button data-tab="kredite">Kredite</button>
   </nav>
 
   <!-- ÜBERSICHT -->
@@ -290,6 +295,24 @@
     </div>
     <button class="btn btn-ghost" id="addDebtBtn">+ Neuer Eintrag</button>
   </section>
+
+  <!-- RECHNUNGEN -->
+  <section class="tab-panel" id="tab-rechnungen">
+    <div class="card">
+      <h2><span class="eyebrow">Offen</span>Offene Rechnungen</h2>
+      <div id="billsList"></div>
+      <button class="btn btn-ghost" style="margin-top:12px;" id="addBillBtn">+ Neue Rechnung</button>
+    </div>
+  </section>
+
+  <!-- KREDITE -->
+  <section class="tab-panel" id="tab-kredite">
+    <div class="card">
+      <h2><span class="eyebrow">Ratenkredite</span>Deine Kredite</h2>
+      <div id="loansList"></div>
+      <button class="btn btn-ghost" style="margin-top:12px;" id="addLoanBtn">+ Neuer Kredit</button>
+    </div>
+  </section>
 </div>
 
 <!-- MODAL: Transaction -->
@@ -352,6 +375,7 @@
     </div>
     <div class="field"><label>Zieldatum (optional)</label><input type="month" id="goalDeadline"></div>
     <div class="goal-hint" id="goalHint" style="display:none;"></div>
+    <div id="goalHistory"></div>
     <div class="modal-actions">
       <button class="btn btn-danger" style="display:none; flex:0 0 auto; width:auto; padding:12px 16px;" id="goalDelete">Löschen</button>
       <button class="btn btn-ghost" data-close>Abbrechen</button>
@@ -368,7 +392,10 @@
     <input type="hidden" id="contribGoalId">
     <input type="hidden" id="contribDirection" value="in">
     <p class="sub" style="color:var(--ink-dim); font-size:13px; margin-top:-8px;" id="contribGoalName"></p>
-    <div class="field"><label>Betrag (€)</label><input type="number" step="0.01" id="contribAmount" placeholder="100"></div>
+    <div class="modal-row">
+      <div class="field"><label>Betrag (€)</label><input type="number" step="0.01" id="contribAmount" placeholder="100"></div>
+      <div class="field"><label>Datum</label><input type="date" id="contribDate"></div>
+    </div>
     <div class="modal-actions">
       <button class="btn btn-ghost" data-close>Abbrechen</button>
       <button class="btn btn-gold" id="contribSave">Speichern</button>
@@ -392,7 +419,13 @@
     <div class="field"><label>Gruppe</label>
       <select class="field-select" id="recGroup"><option>Fixkosten</option><option>Versicherungen</option><option>Einnahmen</option><option>Sonstiges</option></select>
     </div>
-    <div class="field"><label>Start-Monat</label><input type="month" id="recStart"></div>
+    <div class="modal-row">
+      <div class="field"><label>Start-Monat</label><input type="month" id="recStart"></div>
+      <div class="field"><label>Tag im Monat</label><input type="number" min="1" max="31" id="recDay" placeholder="1"></div>
+    </div>
+    <div class="field"><label>Ratenkredit zuordnen (optional)</label>
+      <select class="field-select" id="recLoan"><option value="">Kein Kredit</option></select>
+    </div>
     <div class="modal-actions">
       <button class="btn btn-danger" style="display:none; flex:0 0 auto; width:auto; padding:12px 16px;" id="recDelete">Löschen</button>
       <button class="btn btn-ghost" data-close>Abbrechen</button>
@@ -401,11 +434,26 @@
   </div>
 </div>
 
+<!-- MODAL: Debt action choice -->
+<div class="modal-overlay center-always" id="modalDebtAction">
+  <div class="modal">
+    <button class="modal-close" data-close>✕</button>
+    <h3 id="debtActionName">Schulden</h3>
+    <p class="sub" style="color:var(--ink-dim); font-size:13px; margin-top:-10px;" id="debtActionMeta"></p>
+    <div class="action-choice">
+      <button class="in" id="debtActionPay">💰 Zahlung erfassen</button>
+      <button class="edit" id="debtActionEdit">✎ Bearbeiten</button>
+      <button class="edit" id="debtActionDelete" style="color:#FF9C86;">🗑 Löschen</button>
+    </div>
+  </div>
+</div>
+
 <!-- MODAL: Debt/Receivable -->
 <div class="modal-overlay" id="modalDebt">
   <div class="modal">
     <button class="modal-close" data-close>✕</button>
-    <h3>Neuer Eintrag</h3>
+    <h3 id="debtModalTitle">Neuer Eintrag</h3>
+    <input type="hidden" id="debtId">
     <div class="field"><label>Art</label>
       <select class="field-select" id="debtType">
         <option value="debt">Ich schulde jemandem Geld</option>
@@ -428,14 +476,100 @@
     <h3 id="debtPayTitle">Betrag erfassen</h3>
     <input type="hidden" id="debtPayId">
     <p class="sub" style="color:var(--ink-dim); font-size:13px; margin-top:-8px;" id="debtPayName"></p>
-    <div class="field"><label>Betrag (€)</label><input type="number" step="0.01" id="debtPayAmount" placeholder="0,00"></div>
-    <div class="field" id="debtPayPersonWrap" style="display:none;">
-      <label>Wer hat das Geld erhalten?</label>
-      <select class="field-select" id="debtPayPerson"><option value="Ivan">Ivan</option><option value="Anita">Anita</option></select>
+    <div class="modal-row">
+      <div class="field"><label>Betrag (€)</label><input type="number" step="0.01" id="debtPayAmount" placeholder="0,00"></div>
+      <div class="field"><label>Datum</label><input type="date" id="debtPayDate"></div>
+    </div>
+    <div class="field"><label>Konto</label>
+      <select class="field-select" id="debtPayAccount"><option value="Ivan">Ivan</option><option value="Anita">Anita</option></select>
     </div>
     <div class="modal-actions">
       <button class="btn btn-ghost" data-close>Abbrechen</button>
       <button class="btn btn-gold" id="debtPaySave">Speichern</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL: Bill (create/edit) -->
+<div class="modal-overlay" id="modalBill">
+  <div class="modal">
+    <button class="modal-close" data-close>✕</button>
+    <h3 id="billModalTitle">Neue Rechnung</h3>
+    <input type="hidden" id="billId">
+    <div class="field"><label>Worum geht es?</label><input type="text" id="billTitle" placeholder="z. B. Strafzettel, Handyrechnung"></div>
+    <div class="modal-row">
+      <div class="field"><label>Betrag (€)</label><input type="number" step="0.01" id="billAmount" placeholder="0,00"></div>
+      <div class="field"><label>Fällig bis</label><input type="date" id="billDue"></div>
+    </div>
+    <div class="field"><label>Notiz (optional)</label><textarea id="billNotes" rows="3" style="width:100%; background:var(--bg-2); border:1px solid var(--line); color:var(--ink); padding:12px 13px; border-radius:8px; font-size:14px; font-family:var(--font-body); resize:vertical;"></textarea></div>
+    <div class="modal-actions">
+      <button class="btn btn-danger" style="display:none; flex:0 0 auto; width:auto; padding:12px 16px;" id="billDelete">Löschen</button>
+      <button class="btn btn-ghost" data-close>Abbrechen</button>
+      <button class="btn btn-gold" id="billSave">Speichern</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL: Bill action choice -->
+<div class="modal-overlay center-always" id="modalBillAction">
+  <div class="modal">
+    <button class="modal-close" data-close>✕</button>
+    <h3 id="billActionName">Rechnung</h3>
+    <p class="sub" style="color:var(--ink-dim); font-size:13px; margin-top:-10px;" id="billActionMeta"></p>
+    <div class="action-choice">
+      <button class="in" id="billActionPay">💰 Als bezahlt markieren</button>
+      <button class="edit" id="billActionEdit">✎ Bearbeiten</button>
+      <button class="edit" id="billActionDelete" style="color:#FF9C86;">🗑 Löschen</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL: Bill payment -->
+<div class="modal-overlay" id="modalBillPay">
+  <div class="modal">
+    <button class="modal-close" data-close>✕</button>
+    <h3>Rechnung bezahlen</h3>
+    <input type="hidden" id="billPayId">
+    <p class="sub" style="color:var(--ink-dim); font-size:13px; margin-top:-8px;" id="billPayName"></p>
+    <div class="modal-row">
+      <div class="field"><label>Bezahlt am</label><input type="date" id="billPayDate"></div>
+      <div class="field"><label>Konto</label>
+        <select class="field-select" id="billPayAccount"><option value="Ivan">Ivan</option><option value="Anita">Anita</option></select>
+      </div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" data-close>Abbrechen</button>
+      <button class="btn btn-gold" id="billPaySave">Als bezahlt markieren</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL: Reminder popup -->
+<div class="modal-overlay center-always" id="modalReminder">
+  <div class="modal">
+    <h3>⏰ Offene Rechnungen</h3>
+    <div id="reminderList" style="margin-bottom:6px;"></div>
+    <div class="modal-actions">
+      <button class="btn btn-gold" id="reminderAckBtn">Zur Kenntnis genommen</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL: Loan (create/edit) -->
+<div class="modal-overlay" id="modalLoan">
+  <div class="modal">
+    <button class="modal-close" data-close>✕</button>
+    <h3 id="loanModalTitle">Neuer Ratenkredit</h3>
+    <input type="hidden" id="loanId">
+    <div class="field"><label>Name</label><input type="text" id="loanName" placeholder="z. B. Autokredit"></div>
+    <div class="modal-row">
+      <div class="field"><label>Hauptbetrag / Kreditsumme (€)</label><input type="number" step="0.01" id="loanPrincipal" placeholder="10000"></div>
+      <div class="field"><label>Gesamt-Rückzahlbetrag (€)</label><input type="number" step="0.01" id="loanTotalRepay" placeholder="11200"></div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-danger" style="display:none; flex:0 0 auto; width:auto; padding:12px 16px;" id="loanDelete">Löschen</button>
+      <button class="btn btn-ghost" data-close>Abbrechen</button>
+      <button class="btn btn-gold" id="loanSave">Speichern</button>
     </div>
   </div>
 </div>
@@ -466,12 +600,14 @@ const db = firebase.firestore();
 
 const state = {
   uid: null,
-  categories: [], recurring: [], goals: [], debts: [],
+  categories: [], recurring: [], goals: [], debts: [], loans: [], bills: [],
   settings: { startBalance: 0 },
   txFilter: { year: new Date().getFullYear(), month: '', day: '' },
   analyseFilter: { year: new Date().getFullYear(), month: new Date().getMonth()+1 },
-  unsub: []
+  unsub: [],
+  reminderChecked: false
 };
+const ACCOUNTS = ['Ivan','Anita'];
 
 const MONTH_NAMES = ["Januar","Februar","März","April","Mai","Juni","Juli","August","September","Oktober","November","Dezember"];
 const pad2 = n => String(n).padStart(2,'0');
@@ -630,7 +766,7 @@ async function bootstrapUser(){
   if(!settingsSnap.exists) await settingsRef.set({startBalance:0});
 
   populateFilterSelectors();
-  listenCategories(); listenRecurring(); listenGoals(); listenDebts(); listenSettings();
+  listenCategories(); listenRecurring(); listenGoals(); listenDebts(); listenSettings(); listenLoans(); listenBills();
 }
 
 async function seedDefaults(){
@@ -657,6 +793,8 @@ function listenRecurring(){ state.unsub.push(userCol('recurring').onSnapshot(sna
 function listenGoals(){ state.unsub.push(userCol('goals').onSnapshot(snap=>{ state.goals=snap.docs.map(d=>({id:d.id,...d.data()})); renderAll(); })); }
 function listenDebts(){ state.unsub.push(userCol('debts').onSnapshot(snap=>{ state.debts=snap.docs.map(d=>({id:d.id,...d.data()})); renderAll(); })); }
 function listenSettings(){ state.unsub.push(db.collection('users').doc(state.uid).collection('meta').doc('settings').onSnapshot(snap=>{ if(snap.exists) state.settings=snap.data(); renderAll(); })); }
+function listenLoans(){ state.unsub.push(userCol('loans').onSnapshot(snap=>{ state.loans=snap.docs.map(d=>({id:d.id,...d.data()})); renderAll(); })); }
+function listenBills(){ state.unsub.push(userCol('bills').onSnapshot(snap=>{ state.bills=snap.docs.map(d=>({id:d.id,...d.data()})); renderAll(); })); }
 
 function categoryById(id){ return state.categories.find(c=>c.id===id); }
 async function ensureCategory(name, type, group){
@@ -675,8 +813,17 @@ async function ensureRecurringForMonth(monthKey){
     if(r.startMonth && monthKey < r.startMonth) continue;
     if(r.endMonth && monthKey > r.endMonth) continue;
     if((r.generatedMonths||[]).includes(monthKey)) continue;
-    await userCol('transactions').add({date: monthKey+'-01', type:r.type, categoryId:r.categoryId, amount:r.amount, note:r.name, source:'recurring', recurringId:r.id});
+    const day = Math.min(31, Math.max(1, Number(r.payDay)||1));
+    await userCol('transactions').add({date: monthKey+'-'+pad2(day), type:r.type, categoryId:r.categoryId, amount:r.amount, note:r.name, source:'recurring', recurringId:r.id});
     await userCol('recurring').doc(r.id).set({generatedMonths: firebase.firestore.FieldValue.arrayUnion(monthKey)}, {merge:true});
+    if(r.loanId){
+      const loan = state.loans.find(l=>l.id===r.loanId);
+      if(loan){
+        const newPaid = Math.min(Number(loan.totalRepay)||0, (Number(loan.paid)||0) + Number(r.amount));
+        await userCol('loans').doc(r.loanId).set({paid:newPaid}, {merge:true});
+        loan.paid = newPaid;
+      }
+    }
   }
 }
 
@@ -868,12 +1015,60 @@ function renderRecurring(){
   if(!state.recurring.length){ wrap.innerHTML = `<div class="empty-state"><div class="glyph">🔁</div>Noch keine Fixkosten hinterlegt.</div>`; return; }
   wrap.innerHTML = state.recurring.map(r=>`
     <div class="list-item">
-      <div class="li-main"><div class="li-name">${escapeHtml(r.name)}</div><div class="li-meta">${r.group||'Sonstiges'} · ab ${r.startMonth||'–'}</div></div>
+      <div class="li-main"><div class="li-name">${escapeHtml(r.name)}</div><div class="li-meta">${r.group||'Sonstiges'} · am ${r.payDay||1}. jeden Monats ${r.loanId?'· 🔗 Kredit':''}</div></div>
       <div class="li-amt" style="color:${r.type==='income'?'var(--income)':'var(--expense)'}">${r.type==='income'?'+':'-'}${eur(r.amount)}</div>
       <div class="li-actions"><button data-edit-rec="${r.id}" title="Bearbeiten">✎</button></div>
     </div>`).join('');
   wrap.querySelectorAll('[data-edit-rec]').forEach(b=>b.addEventListener('click', ()=>openRecurringModal(b.dataset.editRec)));
 }
+
+/* ============== KREDITE (Ratenkredite) ============== */
+function loanTileHtml(l){
+  const total = Number(l.totalRepay)||0;
+  const paid = Math.min(total, Number(l.paid)||0);
+  const pct = total>0 ? Math.min(100, Math.round((paid/total)*100)) : 0;
+  const remaining = Math.max(0, total-paid);
+  return `<div class="goal-tile" data-loan="${l.id}">
+    <div class="goal-tile-top"><span class="goal-tile-name">${escapeHtml(l.name)}</span><span class="goal-tile-pct num">${pct}%</span></div>
+    <div class="goal-track"><div class="grad"></div><div class="cover" style="width:${100-pct}%"></div></div>
+    <div class="goal-tile-amounts"><span>${eur(paid)} bezahlt</span><span>${eur(total)} gesamt</span></div>
+    <div class="goal-tile-need ${pct>=100?'done':''}">${pct>=100 ? 'Kredit abbezahlt 🎉' : `noch ${eur(remaining)} offen`} · Hauptbetrag ${eur(l.principal)}</div>
+  </div>`;
+}
+function renderLoans(){
+  const wrap = document.getElementById('loansList');
+  if(!state.loans.length){ wrap.innerHTML = `<div class="empty-state"><div class="glyph">🏦</div>Noch keine Ratenkredite angelegt.</div>`; return; }
+  wrap.innerHTML = state.loans.map(loanTileHtml).join('');
+  wrap.querySelectorAll('.goal-tile').forEach(t=>t.addEventListener('click', ()=>openLoanModal(t.dataset.loan)));
+}
+document.getElementById('addLoanBtn').addEventListener('click', ()=>openLoanModal(null));
+function openLoanModal(id){
+  const l = id ? state.loans.find(x=>x.id===id) : null;
+  document.getElementById('loanModalTitle').textContent = l ? 'Ratenkredit bearbeiten' : 'Neuer Ratenkredit';
+  document.getElementById('loanId').value = l ? l.id : '';
+  document.getElementById('loanName').value = l ? l.name : '';
+  document.getElementById('loanPrincipal').value = l ? l.principal : '';
+  document.getElementById('loanTotalRepay').value = l ? l.totalRepay : '';
+  document.getElementById('loanDelete').style.display = l ? 'inline-flex' : 'none';
+  openModal('modalLoan');
+}
+document.getElementById('loanSave').addEventListener('click', async ()=>{
+  const id = document.getElementById('loanId').value;
+  const name = document.getElementById('loanName').value.trim();
+  const principal = parseFloat(document.getElementById('loanPrincipal').value);
+  const totalRepay = parseFloat(document.getElementById('loanTotalRepay').value);
+  if(!name || isNaN(principal) || isNaN(totalRepay)){ toast('Bitte alle Felder ausfüllen'); return; }
+  if(id) await userCol('loans').doc(id).set({name, principal, totalRepay}, {merge:true});
+  else await userCol('loans').add({name, principal, totalRepay, paid:0});
+  toast('Ratenkredit gespeichert');
+  closeModal('modalLoan');
+});
+document.getElementById('loanDelete').addEventListener('click', async ()=>{
+  const id = document.getElementById('loanId').value;
+  if(id) await userCol('loans').doc(id).delete();
+  toast('Ratenkredit gelöscht');
+  closeModal('modalLoan');
+});
 
 /* ============== SCHULDEN ============== */
 function renderDebts(){
@@ -881,23 +1076,43 @@ function renderDebts(){
   const receivables = state.debts.filter(d=>d.type==='receivable');
   const debtsWrap = document.getElementById('debtsList');
   const recvWrap = document.getElementById('receivablesList');
-  debtsWrap.innerHTML = debts.length ? debts.map(debtItemHtml).join('') : `<div class="empty-state"><div class="glyph">🎉</div>Keine offenen Schulden.</div>`;
-  recvWrap.innerHTML = receivables.length ? receivables.map(debtItemHtml).join('') : `<div class="empty-state"><div class="glyph">🤝</div>Niemand schuldet dir aktuell Geld.</div>`;
-  document.querySelectorAll('[data-pay]').forEach(b=>b.addEventListener('click', ()=>openDebtPay(b.dataset.pay)));
+  debtsWrap.innerHTML = debts.length ? debts.map(debtTileHtml).join('') : `<div class="empty-state"><div class="glyph">🎉</div>Keine offenen Schulden.</div>`;
+  recvWrap.innerHTML = receivables.length ? receivables.map(debtTileHtml).join('') : `<div class="empty-state"><div class="glyph">🤝</div>Niemand schuldet dir aktuell Geld.</div>`;
+  document.querySelectorAll('#debtsList .goal-tile, #receivablesList .goal-tile').forEach(t=>t.addEventListener('click', ()=>openDebtAction(t.dataset.debt)));
 }
-function debtItemHtml(d){
-  const isRecv = d.type==='receivable';
-  return `<div class="list-item">
-    <div class="li-main"><div class="li-name">${escapeHtml(d.name)}</div><div class="li-meta">Offen: ${eur(d.amount)}</div></div>
-    <div class="li-actions"><button class="pay" data-pay="${d.id}">${isRecv?'Rückzahlung':'Abbezahlen'}</button></div>
+function debtTileHtml(d){
+  const original = Number(d.originalAmount)||Number(d.amount)||0;
+  const remaining = Number(d.amount)||0;
+  const paid = Math.max(0, original-remaining);
+  const pct = original>0 ? Math.min(100, Math.round((paid/original)*100)) : 0;
+  return `<div class="goal-tile" data-debt="${d.id}">
+    <div class="goal-tile-top"><span class="goal-tile-name">${escapeHtml(d.name)}</span><span class="goal-tile-pct num">${pct}%</span></div>
+    <div class="goal-track"><div class="grad"></div><div class="cover" style="width:${100-pct}%"></div></div>
+    <div class="goal-tile-amounts"><span>${eur(paid)} erledigt</span><span>${eur(original)} gesamt</span></div>
+    <div class="goal-tile-need ${pct>=100?'done':''}">noch ${eur(remaining)} offen</div>
   </div>`;
+}
+function openDebtAction(id){
+  const d = state.debts.find(x=>x.id===id);
+  if(!d) return;
+  const isRecv = d.type==='receivable';
+  document.getElementById('debtActionName').textContent = d.name;
+  document.getElementById('debtActionMeta').textContent = `Offen: ${eur(d.amount)}`;
+  document.getElementById('debtActionPay').textContent = isRecv ? '💰 Rückzahlung erfassen' : '💰 Zahlung erfassen';
+  document.getElementById('debtActionPay').onclick = ()=>{ closeModal('modalDebtAction'); openDebtPay(id); };
+  document.getElementById('debtActionEdit').onclick = ()=>{ closeModal('modalDebtAction'); openDebtModal(id); };
+  document.getElementById('debtActionDelete').onclick = async ()=>{
+    closeModal('modalDebtAction');
+    if(confirm(`"${d.name}" wirklich löschen?`)){ await userCol('debts').doc(id).delete(); toast('Eintrag gelöscht'); }
+  };
+  openModal('modalDebtAction');
 }
 
 /* ============== MODALS: helpers ============== */
 function openModal(id){ document.getElementById(id).classList.add('open'); }
 function closeModal(id){ document.getElementById(id).classList.remove('open'); }
 document.querySelectorAll('[data-close]').forEach(b=>b.addEventListener('click', ()=>b.closest('.modal-overlay').classList.remove('open')));
-document.querySelectorAll('.modal-overlay').forEach(ov=>ov.addEventListener('click', e=>{ if(e.target===ov) ov.classList.remove('open'); }));
+document.querySelectorAll('.modal-overlay').forEach(ov=>ov.addEventListener('click', e=>{ if(e.target===ov && ov.id!=='modalReminder') ov.classList.remove('open'); }));
 
 /* ---- Transaction modal ---- */
 function populateCategorySelect(){
@@ -956,20 +1171,23 @@ function parseReceiptText(text){
   if(!store && lines.length) store = lines[0].slice(0,40);
 
   const amountKeywords = /(summe|gesamt|total|zu zahlen|endbetrag)/i;
+  const nonTotalKeywords = /(\bbar\b|ec.?cash|kartenzahlung|girocard|kreditkarte|gegeben|rückgeld|wechselgeld)/i;
   let amount = null;
-  for(const line of lines){
-    if(amountKeywords.test(line)){
-      const found = findAllAmounts(line);
-      if(found.length) amount = found[found.length-1];
+  for(let i=0; i<lines.length; i++){
+    if(amountKeywords.test(lines[i])){
+      let found = findAllAmounts(lines[i]);
+      if(!found.length && lines[i+1]) found = findAllAmounts(lines[i+1]);
+      if(found.length){ amount = found[found.length-1]; break; }
     }
   }
   if(amount===null){
-    const all = findAllAmounts(text);
-    if(all.length) amount = Math.max(...all);
+    const candidateText = lines.filter(l=>!nonTotalKeywords.test(l)).join('\n');
+    const all = findAllAmounts(candidateText);
+    if(all.length) amount = all[all.length-1];
   }
 
   let date = null;
-  const dateMatch = text.match(/(\d{1,2})[.\-\/](\d{1,2})[.\-\/](\d{2,4})/);
+  const dateMatch = text.match(/(\d{1,2})[.\/](\d{1,2})[.\/](\d{2,4})/);
   if(dateMatch){
     let [, d, mo, y] = dateMatch;
     if(y.length===2) y = (Number(y)<50 ? '20':'19') + y;
@@ -1074,6 +1292,17 @@ function openGoalModal(id){
   document.getElementById('goalDelete').style.display = g ? 'inline-flex' : 'none';
   const hint = document.getElementById('goalHint');
   if(g && g.deadline){ hint.style.display='block'; hint.textContent = goalSubText(g); } else { hint.style.display='none'; }
+  const histWrap = document.getElementById('goalHistory');
+  if(g && g.history && g.history.length){
+    const entries = [...g.history].sort((a,b)=> a.date<b.date?1:-1).slice(0,8);
+    histWrap.innerHTML = `<div class="section-label">Verlauf</div>` + entries.map(h=>`
+      <div class="list-item" style="padding:8px 4px;">
+        <div class="li-main"><div class="li-name" style="font-size:13px;">${h.direction==='out'?'Auszahlung':'Einzahlung'}</div><div class="li-meta">${h.date}</div></div>
+        <div class="li-amt" style="color:${h.direction==='out'?'var(--expense)':'var(--income)'}">${h.direction==='out'?'-':'+'}${eur(h.amount)}</div>
+      </div>`).join('');
+  } else {
+    histWrap.innerHTML = '';
+  }
   openModal('modalGoal');
 }
 document.getElementById('goalSave').addEventListener('click', async ()=>{
@@ -1104,17 +1333,20 @@ function openContribution(id, direction){
   document.getElementById('contribSave').textContent = direction==='in' ? 'Einzahlen' : 'Auszahlen';
   document.getElementById('contribGoalName').textContent = g ? `${g.name} · aktuell ${eur(g.current)} gespart` : '';
   document.getElementById('contribAmount').value = '';
+  document.getElementById('contribDate').value = todayISO();
   openModal('modalContribution');
 }
 document.getElementById('contribSave').addEventListener('click', async ()=>{
   const id = document.getElementById('contribGoalId').value;
   const direction = document.getElementById('contribDirection').value;
   const amount = parseFloat(document.getElementById('contribAmount').value);
+  const date = document.getElementById('contribDate').value || todayISO();
   if(!id || isNaN(amount) || amount<=0){ toast('Bitte gültigen Betrag angeben'); return; }
   const g = state.goals.find(x=>x.id===id);
   const delta = direction==='in' ? amount : -amount;
   const newCurrent = Math.max(0, (g.current||0)+delta);
-  await userCol('goals').doc(id).set({current:newCurrent}, {merge:true});
+  const history = [...(g.history||[]), {date, amount, direction}];
+  await userCol('goals').doc(id).set({current:newCurrent, history}, {merge:true});
   toast(direction==='in' ? 'Eingezahlt: '+eur(amount) : 'Ausgezahlt: '+eur(amount));
   closeModal('modalContribution');
 });
@@ -1130,6 +1362,10 @@ function openRecurringModal(id){
   document.getElementById('recAmount').value = r ? r.amount : '';
   document.getElementById('recGroup').value = r ? (r.group||'Fixkosten') : 'Fixkosten';
   document.getElementById('recStart').value = r ? (r.startMonth||todayMonthKey()) : todayMonthKey();
+  document.getElementById('recDay').value = r ? (r.payDay||1) : 1;
+  const loanSel = document.getElementById('recLoan');
+  loanSel.innerHTML = `<option value="">Kein Kredit</option>` + state.loans.map(l=>`<option value="${l.id}">${escapeHtml(l.name)}</option>`).join('');
+  loanSel.value = r && r.loanId ? r.loanId : '';
   document.getElementById('recDelete').style.display = r ? 'inline-flex' : 'none';
   openModal('modalRecurring');
 }
@@ -1140,9 +1376,11 @@ document.getElementById('recSave').addEventListener('click', async ()=>{
   const amount = parseFloat(document.getElementById('recAmount').value);
   const group = document.getElementById('recGroup').value;
   const startMonth = document.getElementById('recStart').value || todayMonthKey();
+  const payDay = Math.min(31, Math.max(1, parseInt(document.getElementById('recDay').value)||1));
+  const loanId = document.getElementById('recLoan').value || null;
   if(!name || isNaN(amount)){ toast('Bitte Name und Betrag angeben'); return; }
   const categoryId = await ensureCategory(name, type, group);
-  const data = {name, type, amount, group, startMonth, categoryId, active:true};
+  const data = {name, type, amount, group, startMonth, payDay, loanId, categoryId, active:true};
   if(id) await userCol('recurring').doc(id).set(data, {merge:true});
   else { data.generatedMonths=[]; await userCol('recurring').add(data); }
   toast('Fixposten gespeichert');
@@ -1156,19 +1394,29 @@ document.getElementById('recDelete').addEventListener('click', async ()=>{
 });
 
 /* ---- Debts ---- */
-document.getElementById('addDebtBtn').addEventListener('click', ()=>{
-  document.getElementById('debtType').value='debt';
-  document.getElementById('debtName').value='';
-  document.getElementById('debtAmount').value='';
+document.getElementById('addDebtBtn').addEventListener('click', ()=>openDebtModal(null));
+function openDebtModal(id){
+  const d = id ? state.debts.find(x=>x.id===id) : null;
+  document.getElementById('debtModalTitle').textContent = d ? 'Eintrag bearbeiten' : 'Neuer Eintrag';
+  document.getElementById('debtId').value = d ? d.id : '';
+  document.getElementById('debtType').value = d ? d.type : 'debt';
+  document.getElementById('debtName').value = d ? d.name : '';
+  document.getElementById('debtAmount').value = d ? d.amount : '';
+  document.getElementById('debtSave').textContent = d ? 'Speichern' : 'Anlegen';
   openModal('modalDebt');
-});
+}
 document.getElementById('debtSave').addEventListener('click', async ()=>{
+  const id = document.getElementById('debtId').value;
   const type = document.getElementById('debtType').value;
   const name = document.getElementById('debtName').value.trim();
   const amount = parseFloat(document.getElementById('debtAmount').value);
   if(!name || isNaN(amount) || amount<=0){ toast('Bitte Name und Betrag angeben'); return; }
-  await userCol('debts').add({type, name, amount});
-  toast('Eintrag angelegt');
+  if(id){
+    await userCol('debts').doc(id).set({type, name, amount}, {merge:true});
+  } else {
+    await userCol('debts').add({type, name, amount, originalAmount:amount, history:[]});
+  }
+  toast('Gespeichert');
   closeModal('modalDebt');
 });
 function openDebtPay(id){
@@ -1178,30 +1426,145 @@ function openDebtPay(id){
   document.getElementById('debtPayTitle').textContent = d.type==='receivable' ? 'Rückzahlung erhalten' : 'Betrag abbezahlen';
   document.getElementById('debtPayName').textContent = `${d.name} · offen: ${eur(d.amount)}`;
   document.getElementById('debtPayAmount').value = '';
-  document.getElementById('debtPayPersonWrap').style.display = d.type==='receivable' ? 'block' : 'none';
+  document.getElementById('debtPayDate').value = todayISO();
+  document.getElementById('debtPayAccount').value = 'Ivan';
   openModal('modalDebtPay');
 }
 document.getElementById('debtPaySave').addEventListener('click', async ()=>{
   const id = document.getElementById('debtPayId').value;
   const amount = parseFloat(document.getElementById('debtPayAmount').value);
+  const date = document.getElementById('debtPayDate').value || todayISO();
+  const account = document.getElementById('debtPayAccount').value;
   if(!id || isNaN(amount) || amount<=0){ toast('Bitte gültigen Betrag angeben'); return; }
   const d = state.debts.find(x=>x.id===id);
   if(!d) return;
   const newAmount = Math.max(0, (d.amount||0) - amount);
+  const history = [...(d.history||[]), {date, amount, account}];
   if(newAmount<=0) await userCol('debts').doc(id).delete();
-  else await userCol('debts').doc(id).set({amount:newAmount}, {merge:true});
+  else await userCol('debts').doc(id).set({amount:newAmount, history}, {merge:true});
 
   const isRecv = d.type==='receivable';
   const catName = isRecv ? 'Rückzahlung' : 'Schulden';
   const catType = isRecv ? 'income' : 'expense';
   const categoryId = await ensureCategory(catName, catType, isRecv?'Einnahmen':'Fixkosten');
-  const tx = {type:catType, date:todayISO(), categoryId, amount, note:(isRecv?'Rückzahlung: ':'Abbezahlt: ')+d.name, source: isRecv?'receivable':'debt', debtId:id};
-  if(isRecv) tx.person = document.getElementById('debtPayPerson').value;
+  const tx = {type:catType, date, categoryId, amount, note:(isRecv?'Rückzahlung: ':'Abbezahlt: ')+d.name, source: isRecv?'receivable':'debt', debtId:id, account};
+  if(isRecv) tx.person = account;
   await userCol('transactions').add(tx);
 
   toast(isRecv ? 'Rückzahlung erfasst' : 'Zahlung erfasst');
   closeModal('modalDebtPay');
   renderBuch(); renderDashboard(); renderAnalyse();
+});
+
+/* ============== RECHNUNGEN (offene Rechnungen) ============== */
+function daysUntil(dateStr){
+  const today = new Date(todayISO()+'T00:00:00');
+  const due = new Date(dateStr+'T00:00:00');
+  return Math.round((due-today)/(1000*60*60*24));
+}
+function renderBills(){
+  const wrap = document.getElementById('billsList');
+  const open = state.bills.filter(b=>!b.paid).sort((a,b)=> a.dueDate<b.dueDate?-1:1);
+  if(!open.length){ wrap.innerHTML = `<div class="empty-state"><div class="glyph">📄</div>Keine offenen Rechnungen.</div>`; return; }
+  wrap.innerHTML = open.map(b=>{
+    const days = daysUntil(b.dueDate);
+    const urgent = days<=7;
+    const label = days<0 ? `${Math.abs(days)} Tage überfällig` : (days===0 ? 'heute fällig' : `noch ${days} Tage`);
+    return `<div class="list-item" data-bill="${b.id}" style="cursor:pointer;">
+      <div class="li-main"><div class="li-name">${escapeHtml(b.title)}</div><div class="li-meta" style="${urgent?'color:var(--expense);font-weight:700;':''}">${b.dueDate} · ${label}</div></div>
+      <div class="li-amt expense">${eur(b.amount)}</div>
+    </div>`;
+  }).join('');
+  wrap.querySelectorAll('[data-bill]').forEach(el=>el.addEventListener('click', ()=>openBillAction(el.dataset.bill)));
+}
+document.getElementById('addBillBtn').addEventListener('click', ()=>openBillModal(null));
+function openBillModal(id){
+  const b = id ? state.bills.find(x=>x.id===id) : null;
+  document.getElementById('billModalTitle').textContent = b ? 'Rechnung bearbeiten' : 'Neue Rechnung';
+  document.getElementById('billId').value = b ? b.id : '';
+  document.getElementById('billTitle').value = b ? b.title : '';
+  document.getElementById('billAmount').value = b ? b.amount : '';
+  document.getElementById('billDue').value = b ? b.dueDate : todayISO();
+  document.getElementById('billNotes').value = b ? (b.notes||'') : '';
+  document.getElementById('billDelete').style.display = b ? 'inline-flex' : 'none';
+  openModal('modalBill');
+}
+document.getElementById('billSave').addEventListener('click', async ()=>{
+  const id = document.getElementById('billId').value;
+  const title = document.getElementById('billTitle').value.trim();
+  const amount = parseFloat(document.getElementById('billAmount').value);
+  const dueDate = document.getElementById('billDue').value || todayISO();
+  const notes = document.getElementById('billNotes').value.trim();
+  if(!title || isNaN(amount) || amount<=0){ toast('Bitte Bezeichnung und Betrag angeben'); return; }
+  if(id) await userCol('bills').doc(id).set({title, amount, dueDate, notes}, {merge:true});
+  else await userCol('bills').add({title, amount, dueDate, notes, paid:false});
+  toast('Rechnung gespeichert');
+  closeModal('modalBill');
+});
+document.getElementById('billDelete').addEventListener('click', async ()=>{
+  const id = document.getElementById('billId').value;
+  if(id) await userCol('bills').doc(id).delete();
+  toast('Rechnung gelöscht');
+  closeModal('modalBill');
+});
+function openBillAction(id){
+  const b = state.bills.find(x=>x.id===id);
+  if(!b) return;
+  document.getElementById('billActionName').textContent = b.title;
+  document.getElementById('billActionMeta').textContent = `${eur(b.amount)} · fällig ${b.dueDate}${b.notes?' · '+b.notes:''}`;
+  document.getElementById('billActionPay').onclick = ()=>{ closeModal('modalBillAction'); openBillPay(id); };
+  document.getElementById('billActionEdit').onclick = ()=>{ closeModal('modalBillAction'); openBillModal(id); };
+  document.getElementById('billActionDelete').onclick = async ()=>{
+    closeModal('modalBillAction');
+    if(confirm(`"${b.title}" wirklich löschen?`)){ await userCol('bills').doc(id).delete(); toast('Rechnung gelöscht'); }
+  };
+  openModal('modalBillAction');
+}
+function openBillPay(id){
+  const b = state.bills.find(x=>x.id===id);
+  if(!b) return;
+  document.getElementById('billPayId').value = id;
+  document.getElementById('billPayName').textContent = `${b.title} · ${eur(b.amount)}`;
+  document.getElementById('billPayDate').value = todayISO();
+  document.getElementById('billPayAccount').value = 'Ivan';
+  openModal('modalBillPay');
+}
+document.getElementById('billPaySave').addEventListener('click', async ()=>{
+  const id = document.getElementById('billPayId').value;
+  const date = document.getElementById('billPayDate').value || todayISO();
+  const account = document.getElementById('billPayAccount').value;
+  const b = state.bills.find(x=>x.id===id);
+  if(!b) return;
+  await userCol('bills').doc(id).set({paid:true, paidDate:date, paidAccount:account}, {merge:true});
+  const categoryId = await ensureCategory('Rechnungen', 'expense', 'Sonstiges');
+  await userCol('transactions').add({type:'expense', date, categoryId, amount:b.amount, note:b.title, source:'bill', billId:id, account});
+  toast('Als bezahlt markiert');
+  closeModal('modalBillPay');
+  renderBuch(); renderDashboard(); renderAnalyse();
+});
+
+/* ---- Reminder popup (once per day, while bills are due within 7 days or overdue) ---- */
+function checkBillReminder(){
+  if(state.reminderChecked) return;
+  const open = state.bills.filter(b=>!b.paid && daysUntil(b.dueDate)<=7);
+  if(!open.length) return;
+  const ackKey = 'hb_bills_ack_'+todayISO();
+  if(localStorage.getItem(ackKey)) { state.reminderChecked = true; return; }
+  state.reminderChecked = true;
+  const list = document.getElementById('reminderList');
+  list.innerHTML = open.sort((a,b)=>a.dueDate<b.dueDate?-1:1).map(b=>{
+    const days = daysUntil(b.dueDate);
+    const label = days<0 ? `${Math.abs(days)} Tage überfällig` : (days===0?'heute fällig':`noch ${days} Tage`);
+    return `<div class="list-item" style="padding:8px 4px;">
+      <div class="li-main"><div class="li-name" style="font-size:13px;">${escapeHtml(b.title)}</div><div class="li-meta" style="${days<=0?'color:var(--expense);font-weight:700;':''}">${label}</div></div>
+      <div class="li-amt expense">${eur(b.amount)}</div>
+    </div>`;
+  }).join('');
+  openModal('modalReminder');
+}
+document.getElementById('reminderAckBtn').addEventListener('click', ()=>{
+  localStorage.setItem('hb_bills_ack_'+todayISO(), '1');
+  closeModal('modalReminder');
 });
 
 /* ============== TABS ============== */
@@ -1226,6 +1589,9 @@ function renderAll(){
     await renderAnalyse();
     renderRecurring();
     renderDebts();
+    renderLoans();
+    renderBills();
+    checkBillReminder();
   });
 }
 </script>
